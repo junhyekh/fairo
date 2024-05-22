@@ -77,7 +77,12 @@ FrankaTorqueControlClient::FrankaTorqueControlClient(
     robot_state_.add_motor_torques_external(0.0);
     robot_state_.add_motor_torques_desired(0.0);
   }
-
+  for (int i = 0; i < NUM_DOFS*NUM_DOFS; i++) {
+    robot_state_.add_mm(0.0);
+  }
+  for (int i = 0; i < (NUM_DOFS-1)*NUM_DOFS; i++) {
+    robot_state_.add_jacobian(0.0);
+  }
   // Parse yaml
   limit_rate_ = config["limit_rate"].as<bool>();
   lpf_cutoff_freq_ = config["lpf_cutoff_frequency"].as<double>();
@@ -124,6 +129,16 @@ FrankaTorqueControlClient::FrankaTorqueControlClient(
         config["collision_behavior"]["upper_force"]
             .as<std::array<double, 6>>());
   }
+  franka::RobotState initial_state = robot_ptr_->readOnce();
+  Eigen::VectorXd initial_tau_ext(7);
+
+  // Bias torque sensor
+  std::array<double, 7> gravity_array = model_ptr_->gravity(initial_state);
+  Eigen::Map<Eigen::Matrix<double, 7, 1>> initial_tau_measured(initial_state.tau_J.data());
+  Eigen::Map<Eigen::Matrix<double, 7, 1>> initial_gravity(gravity_array.data());
+  for (int i = 0; i < NUM_DOFS; i++) {
+    initial_tau_ext[i] = initial_tau_measured[i] - initial_gravity[i];
+  } 
 }
 
 void FrankaTorqueControlClient::run() {
@@ -223,12 +238,13 @@ void FrankaTorqueControlClient::updateServerCommand(
   // Record robot states
   if (!mock_franka_) {
     bool prev_command_successful = false;
-
+    std::array<double, 7> gravity_array = model_ptr_->gravity(libfranka_robot_state);
     for (int i = 0; i < NUM_DOFS; i++) {
       robot_state_.set_joint_positions(i, libfranka_robot_state.q[i]);
       robot_state_.set_joint_velocities(i, libfranka_robot_state.dq[i]);
       robot_state_.set_motor_torques_measured(i,
                                               libfranka_robot_state.tau_J[i]);
+                                              //-gravity_array[i]-initial_tau_ext[i]);
       robot_state_.set_motor_torques_external(
           i, libfranka_robot_state.tau_ext_hat_filtered[i]);
 
@@ -243,7 +259,15 @@ void FrankaTorqueControlClient::updateServerCommand(
       robot_state_.set_motor_torques_desired(i,
                                              libfranka_robot_state.tau_J_d[i]);
     }
-
+    std::array<double, 6 *NUM_DOFS> jacobian_array = model_ptr_->zeroJacobian(
+      franka::Frame::kEndEffector, libfranka_robot_state);
+    std::array<double, NUM_DOFS *NUM_DOFS> mass_matrix = model_ptr_->mass(libfranka_robot_state);
+    for (int i = 0; i < NUM_DOFS*NUM_DOFS; i++) {
+      robot_state_.set_mm(i, mass_matrix[i]);
+    }
+    for (int i = 0; i < (NUM_DOFS-1)*NUM_DOFS; i++) {
+      robot_state_.set_jacobian(i, jacobian_array[i]);
+    }
     robot_state_.set_prev_command_successful(prev_command_successful);
 
     // Error code: can only set to 0 if no errors and 1 if any errors exist for

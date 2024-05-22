@@ -35,6 +35,8 @@ compute_jacobian(State *state, const Eigen::VectorXd &joint_positions,
                  Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic,
                                           Eigen::Dynamic, Eigen::RowMajor>> &J,
                  int64_t frame_idx);
+C_TORCH_EXPORT Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>
+compute_mm(State *state, const Eigen::VectorXd &q);
 C_TORCH_EXPORT Eigen::Matrix<double, Eigen::Dynamic, 1>
 inverse_dynamics(State *state, const Eigen::VectorXd &q,
                  const Eigen::VectorXd &v, const Eigen::VectorXd &a);

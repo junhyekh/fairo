@@ -12,6 +12,7 @@
 #include "pinocchio/algorithm/joint-configuration.hpp"
 #include "pinocchio/algorithm/kinematics.hpp"
 #include "pinocchio/algorithm/rnea.hpp"
+#include "pinocchio/algorithm/crba.hpp"
 #include "pinocchio/parsers/sample-models.hpp"
 #include "pinocchio/parsers/urdf.hpp"
 
@@ -92,6 +93,16 @@ void compute_jacobian(
   pinocchio::computeFrameJacobian(model, model_data, joint_positions,
                                   frame_idx_, pinocchio::LOCAL_WORLD_ALIGNED,
                                   J);
+}
+
+Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>
+compute_mm(State *state, const Eigen::VectorXd &q){
+  auto model = *state->model;
+  auto model_data = *state->model_data;
+  pinocchio::crba(model, model_data, q);
+  model_data.M.triangularView<Eigen::StrictlyLower>() = model_data.M.transpose().triangularView<Eigen::StrictlyLower>();
+  return model_data.M;
+
 }
 
 Eigen::Matrix<double, Eigen::Dynamic, 1>
